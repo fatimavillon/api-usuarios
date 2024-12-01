@@ -1,0 +1,110 @@
+service: userService
+
+provider:
+  name: aws
+  runtime: python3.10
+  region: us-east-1
+  role: ${file(../roleARN.yaml):roles.LabRole}
+  environment:
+    TABLE_NAME: Usuarios
+    AUTH_TOKENS_TABLE: ${self:service}-auth-tokens-${opt:stage, 'dev'}
+
+functions:
+  createUser:
+    handler: create_user.lambda_handler
+    events:
+      - http:
+          path: /users
+          method: post
+          cors: true
+
+  getAllUsers:
+    handler: get_all_users.lambda_handler
+    events:
+      - http:
+          path: /users
+          method: get
+          cors: true
+
+  updateUser:
+    handler: update_user.lambda_handler
+    events:
+      - http:
+          path: /users/{user_id}
+          method: put
+          cors: true
+
+  deleteUser:
+    handler: delete_user.lambda_handler
+    events:
+      - http:
+          path: /users/{user_id}
+          method: delete
+          cors: true
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TABLE_NAME}
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+          - AttributeName: role
+            AttributeType: S  # Nuevo atributo role
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: user_id
+            KeyType: RANGE  # Identificador único del usuario por tenant
+        BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+          - IndexName: tenant-id-index
+            KeySchema:
+              - AttributeName: tenant_id
+                KeyType: HASH
+              - AttributeName: user_id
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+          - IndexName: role-index
+            KeySchema:
+              - AttributeName: role
+                KeyType: HASH  # Permite búsquedas por role
+            Projection:
+              ProjectionType: ALL
+    AuthTokensTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.AUTH_TOKENS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: token
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: token
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+          - IndexName: user_id-index
+            KeySchema:
+              - AttributeName: user_id
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
